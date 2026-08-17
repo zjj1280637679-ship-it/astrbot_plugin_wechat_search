@@ -110,6 +110,26 @@ def test_citation_parsing() -> None:
     assert parse_citation("wx:5", "1001") == ("1001", "wx:5")
 
 
+def test_browse_mode_pages_backward() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        store = WeChatSearchStore(os.path.join(tmp, "wx.sqlite3"))
+        store.upsert_many(
+            "acct",
+            [_live_record(str(i), "100", "甲", f"消息{i}", 1000 + i * 100) for i in range(1, 6)],
+        )
+        page1 = store.browse("acct", "1001", limit=3)
+        assert [row["message_id"] for row in page1] == ["wx:5", "wx:4", "wx:3"]
+        oldest = min(row["id"] for row in page1)
+        page2 = store.browse("acct", "1001", limit=3, before_id=oldest)
+        assert [row["message_id"] for row in page2] == ["wx:2", "wx:1"]
+        service_out = WeChatSearchService(store, EventOneBotSource()).browse("acct", "1001", limit=2)
+        payload = json.loads(service_out)
+        assert payload["mode"] == "browse"
+        assert payload["has_more"] is True
+        assert payload["results"][0]["before_id"] is not None
+        store.close()
+
+
 def test_onebot_record_normalization() -> None:
     record = onebot_message_to_record(
         {

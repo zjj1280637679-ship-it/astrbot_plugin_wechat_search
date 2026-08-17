@@ -477,6 +477,39 @@ class WeChatSearchStore:
             rows = self._conn.execute(sql, params).fetchall()
         return [dict(row) for row in rows]
 
+    def browse(
+        self,
+        account_id: str,
+        group_id: str,
+        *,
+        sender_id: str = "",
+        since: int | None = None,
+        until: int | None = None,
+        limit: int = 20,
+        before_id: int | None = None,
+    ) -> list[dict]:
+        """Chronological browsing over the local index (insertion order = time).
+
+        Mirrors the shape of the built-in AstrBot history tool: newest first,
+        optional ``before_id`` cursor for paging backward.
+        """
+        limit = min(max(int(limit), 1), 100)
+        clauses, params = self._filters(
+            account_id, group_id, sender_id, since, until, None
+        )
+        if before_id is not None:
+            clauses.append("m.id < ?")
+            params.append(int(before_id))
+        params.append(limit)
+        sql = (
+            "SELECT m.*, 0.0 AS rank FROM messages m WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY m.id DESC LIMIT ?"
+        )
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+        return [dict(row) for row in rows]
+
     def list_by_sender(
         self,
         account_id: str,
